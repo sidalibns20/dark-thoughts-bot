@@ -96,6 +96,9 @@ schedule.every(1).hours.do(post_quotes)  # كل ساعة
 # تشغيل البوت
 # ==========================
 print("بوت Dark Thoughts يعمل الآن…")
+
+post_quotes()  # نشر فوري عند التشغيل
+
 while True:
     schedule.run_pending()
     time.sleep(10)

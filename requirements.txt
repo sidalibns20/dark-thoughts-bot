@@ -2,5 +2,3 @@ pyTelegramBotAPI
 feedparser
 schedule
 requests
-transformers
-torch

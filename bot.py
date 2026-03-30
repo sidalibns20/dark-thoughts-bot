@@ -4,16 +4,14 @@ import schedule
 import time
 import os
 import json
-import requests
 import random
+from transformers import pipeline
 
 # ==========================
-# إعدادات
+# إعدادات البوت
 # ==========================
 TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL = os.environ.get("CHANNEL_ID")
-TRANSLATE_URL = os.environ.get("TRANSLATE_URL")
-SHORT_API = os.environ.get("SHORT_API")  # shrinkme.io أو exe.io API
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -45,37 +43,23 @@ def save_data(data):
 posted = load_data()
 
 # ==========================
-# ملخص الخبر (Hook AI)
+# نموذج التلخيص المجاني (HuggingFace)
 # ==========================
-def summarize(text):
-    # استخدم API لترجمة + تلخيص، أو نسخة بسيطة الآن:
-    # النص الأصلي → 120 حرف تقريبًا
-    return text[:120] + "..." if len(text) > 120 else text
+summarizer = pipeline("summarization", model="facebook/mbart-large-50-many-to-many-mmt")
 
-# ==========================
-# ترجمة إلى العربية
-# ==========================
-def translate(text):
+def ai_summarize(text):
     try:
-        res = requests.post(TRANSLATE_URL, json={
-            "q": text,
-            "source": "en",
-            "target": "ar"
-        })
-        return res.json()["translatedText"]
+        result = summarizer(text, max_length=60, min_length=30, do_sample=False)
+        return result[0]['summary_text']
     except:
         return text
 
 # ==========================
-# اختصار الرابط فقط
+# اختيار إيموجي جذاب
 # ==========================
-def shorten(url):
-    try:
-        api_url = f"https://shrinkme.io/api?api={SHORT_API}&url={url}"
-        res = requests.get(api_url)
-        return res.json()["shortenedUrl"]
-    except:
-        return url
+def add_emoji():
+    emojis = ["🔥","⚡","🧠","🌍","🚨"]
+    return random.choice(emojis)
 
 # ==========================
 # جلب الأخبار
@@ -104,11 +88,9 @@ def post_news():
 
         if key not in posted:
             try:
-                short_text = summarize(item["title"])
-                ar_text = translate(short_text)
-                short_link = shorten(item["link"])
-
-                message = f"{ar_text}\n{short_link}"
+                summary = ai_summarize(item["title"])
+                emoji = add_emoji()
+                message = f"{emoji} {summary}"
 
                 bot.send_message(CHANNEL, message)
                 print("✅ News posted")
@@ -128,7 +110,7 @@ def post_news():
 # ==========================
 schedule.every(3).minutes.do(post_news)
 
-print("🚀 Smart News Bot Running...")
+print("🚀 Elite Free AI News Bot Running...")
 
 post_news()
 

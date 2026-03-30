@@ -5,6 +5,7 @@ import time
 import os
 import json
 import requests
+import random
 
 # ==========================
 # إعدادات
@@ -12,11 +13,12 @@ import requests
 TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL = os.environ.get("CHANNEL_ID")
 TRANSLATE_URL = os.environ.get("TRANSLATE_URL")
+SHORT_API = os.environ.get("SHORT_API")  # API اختصار الروابط
 
 bot = telebot.TeleBot(TOKEN)
 
 # ==========================
-# مصادر الأخبار
+# RSS
 # ==========================
 RSS_FEEDS = [
     "http://feeds.bbci.co.uk/news/rss.xml",
@@ -25,18 +27,9 @@ RSS_FEEDS = [
 ]
 
 # ==========================
-# كلمات الفلترة (محتوى قوي)
+# تخزين
 # ==========================
-KEYWORDS = [
-    "war", "ai", "technology", "robot", "economy",
-    "china", "usa", "russia", "israel", "crypto",
-    "tesla", "google", "openai", "military"
-]
-
-# ==========================
-# ملف التخزين
-# ==========================
-DATA_FILE = "posted_news.json"
+DATA_FILE = "posted.json"
 
 def load_data():
     try:
@@ -49,107 +42,94 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f)
 
-posted_news = load_data()
+posted = load_data()
 
 # ==========================
-# تنظيف النص
-# ==========================
-def clean_text(text):
-    return text.lower().strip()
-
-# ==========================
-# فلترة الأخبار
-# ==========================
-def is_relevant(title):
-    title = title.lower()
-    return any(word in title for word in KEYWORDS)
-
-# ==========================
-# ترجمة للعربية
+# ترجمة
 # ==========================
 def translate(text):
     try:
-        response = requests.post(TRANSLATE_URL, json={
+        res = requests.post(TRANSLATE_URL, json={
             "q": text,
             "source": "en",
-            "target": "ar",
-            "format": "text"
+            "target": "ar"
         })
-        return response.json()["translatedText"]
+        return res.json()["translatedText"]
     except:
-        return text  # fallback
+        return text
+
+# ==========================
+# تلخيص بسيط (Hook)
+# ==========================
+def make_short(text):
+    return text[:120] + "..." if len(text) > 120 else text
+
+# ==========================
+# اختصار الرابط
+# ==========================
+def shorten(url):
+    try:
+        api_url = f"https://shrinkme.io/api?api={SHORT_API}&url={url}"
+        res = requests.get(api_url)
+        return res.json()["shortenedUrl"]
+    except:
+        return url
 
 # ==========================
 # جلب الأخبار
 # ==========================
 def get_news():
-    news_items = []
-
+    news = []
     for feed in RSS_FEEDS:
         parsed = feedparser.parse(feed)
-
         for entry in parsed.entries[:5]:
-            title = entry.title
-            link = entry.link
-
-            if is_relevant(title):
-                news_items.append({
-                    "title": title,
-                    "link": link
-                })
-
-    return news_items
+            news.append({
+                "title": entry.title,
+                "link": entry.link
+            })
+    return news
 
 # ==========================
-# نشر الأخبار
+# النشر
 # ==========================
 def post_news():
-    global posted_news
+    global posted
 
     news_list = get_news()
 
-    for news in news_list:
-        clean = clean_text(news["title"])
+    for item in news_list:
+        key = item["title"].lower()
 
-        if clean not in posted_news:
+        if key not in posted:
             try:
-                arabic = translate(news["title"])
+                short_text = make_short(item["title"])
+                ar = translate(short_text)
+                link = shorten(item["link"])
 
-                message = f"""🌍 {arabic}
+                message = f"""🔥 {ar}
 
-🧠 {news['title']}
-
-🔗 المصدر:
-{news['link']}
-
-📰 @darkthu9hts"""
+🔗 {link}"""
 
                 bot.send_message(CHANNEL, message)
 
-                print("✅ News posted")
+                print("✅ Posted")
 
-                posted_news.append(clean)
+                posted.append(key)
+                if len(posted) > 200:
+                    posted = posted[-200:]
 
-                # حفظ آخر 200 خبر
-                if len(posted_news) > 200:
-                    posted_news = posted_news[-200:]
-
-                save_data(posted_news)
-
+                save_data(posted)
                 break
 
             except Exception as e:
-                print(f"❌ Error: {e}")
+                print(e)
 
 # ==========================
-# الجدولة
+# جدولة
 # ==========================
 schedule.every(3).minutes.do(post_news)
 
-# ==========================
-# التشغيل
-# ==========================
-print("🚀 Ultimate News Bot Running...")
+print("🚀 Short News Bot Running...")
 
 post_news()
 

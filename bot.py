@@ -1,16 +1,18 @@
 import telebot
 import feedparser
 import requests
+from bs4 import BeautifulSoup
+import time
 import json
 import os
 import random
 
 # ==========================
 TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL = os.environ.get("CHANNEL_ID")  # يمكن أن يكون @channel_name أو Chat ID
+CHANNEL = os.environ.get("CHANNEL_ID")
+
 bot = telebot.TeleBot(TOKEN)
 
-# ==========================
 RSS_FEEDS = [
     "https://www.aljazeera.net/aljazeera/ar/feeds/all.xml",
     "https://feeds.bbci.co.uk/arabic/rss.xml"
@@ -33,53 +35,105 @@ def save_posted(data):
 posted = load_posted()
 
 # ==========================
-def add_emoji():
-    return random.choice(["🌍","📰","🔥","⚡","🧠"])
+def emoji():
+    return random.choice(["🚨","🔥","📰","🌍","⚡"])
 
 # ==========================
-def generate_summary(text):
-    """
-    توليد وصف جذاب باستخدام AI مجاني
-    يمكنك لاحقًا استخدام أي API مجاني للذكاء الاصطناعي
-    الآن سنكتفي بتوليد نص قصير عشوائي للتجربة
-    """
-    words = text.split()[:20]  # أخذ أول 20 كلمة فقط كموجز
-    return " ".join(words) + "…"
+# استخراج الصورة
+def get_image(entry):
+    if "media_content" in entry:
+        return entry.media_content[0]["url"]
+    if "media_thumbnail" in entry:
+        return entry.media_thumbnail[0]["url"]
+    return None
 
 # ==========================
-def fetch_news():
+# استخراج النص الكامل
+def get_full_article(url):
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        r = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(r.text, "html.parser")
+
+        paragraphs = []
+
+        # BBC
+        for p in soup.select("div[data-component='text-block'] p"):
+            paragraphs.append(p.get_text())
+
+        # fallback الجزيرة
+        if not paragraphs:
+            for p in soup.select("p"):
+                text = p.get_text()
+                if len(text) > 50:
+                    paragraphs.append(text)
+
+        return "\n\n".join(paragraphs[:15])
+
+    except:
+        return None
+
+# ==========================
+# Hook ذكي (تلخيص جذاب)
+def generate_hook(text):
+    sentences = text.split(".")
+
+    if len(sentences) > 2:
+        return sentences[0] + "..."
+    else:
+        return text[:150] + "..."
+
+# ==========================
+def post_news():
     global posted
+
     for feed in RSS_FEEDS:
-        d = feedparser.parse(feed)
-        for entry in d.entries[:5]:  # أول 5 أخبار فقط للتجربة
+        data = feedparser.parse(feed)
+
+        for entry in data.entries[:5]:
             key = entry.title.lower()
+
             if key in posted:
                 continue
-            # نص جذاب
-            message = f"{add_emoji()} {entry.title}\n\n{generate_summary(entry.get('summary', entry.title))}"
-            # نشر مع صورة إن وجدت
-            if 'media_content' in entry:
-                img_url = entry.media_content[0]['url']
-                try:
-                    bot.send_photo(CHANNEL, img_url, caption=message)
-                    print("🖼️ خبر مع صورة نشر:", entry.title)
-                except:
-                    bot.send_message(CHANNEL, message)
-                    print("📄 خبر بدون صورة نشر:", entry.title)
-            else:
-                bot.send_message(CHANNEL, message)
-                print("📄 خبر بدون صورة نشر:", entry.title)
-            # تخزين لمنع التكرار
-            posted.append(key)
-            if len(posted) > 200:
-                posted = posted[-200:]
-            save_posted(posted)
+
+            try:
+                full_text = get_full_article(entry.link)
+
+                if not full_text:
+                    continue
+
+                hook = generate_hook(full_text)
+                img = get_image(entry)
+
+                message = f"""
+{emoji()} {entry.title}
+
+🧠 {hook}
+
+{full_text}
+"""
+
+                # إرسال مع صورة
+                if img:
+                    bot.send_photo(CHANNEL, img, caption=message[:1000])
+                else:
+                    bot.send_message(CHANNEL, message[:4000])
+
+                print("✅ خبر احترافي تم نشره")
+
+                posted.append(key)
+                if len(posted) > 200:
+                    posted = posted[-200:]
+
+                save_posted(posted)
+                break
+
+            except Exception as e:
+                print("Error:", e)
 
 # ==========================
-print("🚀 Arabic News Bot Running…")
+print("🚀 Professional News Bot Running...")
 
-# تشغيل مباشر كل دقيقة للتحقق من الأخبار الجديدة
-import time
 while True:
-    fetch_news()
+    post_news()
     time.sleep(60)

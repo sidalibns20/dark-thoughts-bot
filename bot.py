@@ -5,13 +5,12 @@ import time
 import os
 import json
 import random
-from transformers import pipeline
 
 # ==========================
 # إعدادات البوت
 # ==========================
 TOKEN = os.environ.get("BOT_TOKEN")
-CHANNEL = os.environ.get("CHANNEL_ID")
+CHANNEL = int(os.environ.get("CHANNEL_ID"))
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -43,18 +42,6 @@ def save_data(data):
 posted = load_data()
 
 # ==========================
-# نموذج التلخيص المجاني (HuggingFace)
-# ==========================
-summarizer = pipeline("summarization", model="facebook/mbart-large-50-many-to-many-mmt")
-
-def ai_summarize(text):
-    try:
-        result = summarizer(text, max_length=60, min_length=30, do_sample=False)
-        return result[0]['summary_text']
-    except:
-        return text
-
-# ==========================
 # اختيار إيموجي جذاب
 # ==========================
 def add_emoji():
@@ -80,39 +67,33 @@ def get_news():
 # ==========================
 def post_news():
     global posted
-
     news_list = get_news()
 
     for item in news_list:
         key = item["title"].lower()
-
         if key not in posted:
             try:
-                summary = ai_summarize(item["title"])
-                emoji = add_emoji()
-                message = f"{emoji} {summary}"
-
+                message = f"{add_emoji()} {item['title']}"
                 bot.send_message(CHANNEL, message)
-                print("✅ News posted")
+                print("✅ News posted:", item['title'])
 
                 posted.append(key)
                 if len(posted) > 200:
                     posted = posted[-200:]
-
                 save_data(posted)
                 break
-
             except Exception as e:
-                print(e)
+                print("Error posting:", e)
 
 # ==========================
 # الجدولة
 # ==========================
-schedule.every(3).minutes.do(post_news)
+schedule.every(3).minutes.do(post_news)  # كل 3 دقائق
+# يمكنك تعديل الوقت حسب رغبتك
 
-print("🚀 Elite Free AI News Bot Running...")
+print("🚀 Lightweight News Bot Running...")
 
-post_news()
+post_news()  # نشر أولي عند التشغيل
 
 while True:
     schedule.run_pending()

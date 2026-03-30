@@ -4,22 +4,33 @@ import schedule
 import time
 import os
 import json
+import requests
 
 # ==========================
 # إعدادات
 # ==========================
 TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL = os.environ.get("CHANNEL_ID")
+TRANSLATE_URL = os.environ.get("TRANSLATE_URL")
 
 bot = telebot.TeleBot(TOKEN)
 
 # ==========================
-# مصادر RSS
+# مصادر الأخبار
 # ==========================
 RSS_FEEDS = [
     "http://feeds.bbci.co.uk/news/rss.xml",
     "http://rss.cnn.com/rss/edition.rss",
     "https://www.aljazeera.com/xml/rss/all.xml"
+]
+
+# ==========================
+# كلمات الفلترة (محتوى قوي)
+# ==========================
+KEYWORDS = [
+    "war", "ai", "technology", "robot", "economy",
+    "china", "usa", "russia", "israel", "crypto",
+    "tesla", "google", "openai", "military"
 ]
 
 # ==========================
@@ -41,10 +52,32 @@ def save_data(data):
 posted_news = load_data()
 
 # ==========================
-# تنظيف العنوان
+# تنظيف النص
 # ==========================
-def clean_title(title):
-    return title.lower().strip()
+def clean_text(text):
+    return text.lower().strip()
+
+# ==========================
+# فلترة الأخبار
+# ==========================
+def is_relevant(title):
+    title = title.lower()
+    return any(word in title for word in KEYWORDS)
+
+# ==========================
+# ترجمة للعربية
+# ==========================
+def translate(text):
+    try:
+        response = requests.post(TRANSLATE_URL, json={
+            "q": text,
+            "source": "en",
+            "target": "ar",
+            "format": "text"
+        })
+        return response.json()["translatedText"]
+    except:
+        return text  # fallback
 
 # ==========================
 # جلب الأخبار
@@ -52,22 +85,23 @@ def clean_title(title):
 def get_news():
     news_items = []
 
-    for feed_url in RSS_FEEDS:
-        feed = feedparser.parse(feed_url)
+    for feed in RSS_FEEDS:
+        parsed = feedparser.parse(feed)
 
-        for entry in feed.entries[:5]:
+        for entry in parsed.entries[:5]:
             title = entry.title
             link = entry.link
 
-            news_items.append({
-                "title": title,
-                "link": link
-            })
+            if is_relevant(title):
+                news_items.append({
+                    "title": title,
+                    "link": link
+                })
 
     return news_items
 
 # ==========================
-# نشر خبر بدون تكرار
+# نشر الأخبار
 # ==========================
 def post_news():
     global posted_news
@@ -75,13 +109,17 @@ def post_news():
     news_list = get_news()
 
     for news in news_list:
-        clean = clean_title(news["title"])
+        clean = clean_text(news["title"])
 
         if clean not in posted_news:
             try:
-                message = f"""🌍 {news['title']}
+                arabic = translate(news["title"])
 
-🔗 اقرأ المزيد:
+                message = f"""🌍 {arabic}
+
+🧠 {news['title']}
+
+🔗 المصدر:
 {news['link']}
 
 📰 @darkthu9hts"""
@@ -92,9 +130,9 @@ def post_news():
 
                 posted_news.append(clean)
 
-                # حفظ فقط آخر 100 خبر
-                if len(posted_news) > 100:
-                    posted_news = posted_news[-100:]
+                # حفظ آخر 200 خبر
+                if len(posted_news) > 200:
+                    posted_news = posted_news[-200:]
 
                 save_data(posted_news)
 
@@ -111,7 +149,7 @@ schedule.every(3).minutes.do(post_news)
 # ==========================
 # التشغيل
 # ==========================
-print("🚀 Ultra News Bot is running...")
+print("🚀 Ultimate News Bot Running...")
 
 post_news()
 

@@ -19,6 +19,7 @@ except:
 
 bot = telebot.TeleBot(TOKEN, parse_mode="Markdown")
 
+# ==========================
 RSS_FEEDS = [
     "https://www.aljazeera.net/aljazeera/ar/feeds/all.xml",
     "https://feeds.bbci.co.uk/arabic/rss.xml"
@@ -41,13 +42,20 @@ def save_posted(data):
 posted = load_posted()
 
 # ==========================
-def clean_text(text):
+def clean(text):
     text = re.sub(r'\s+', ' ', text)
-    text = re.sub(r'\n+', '\n', text)
     return text.strip()
 
 # ==========================
-def extract_article(url):
+def get_image(entry):
+    if "media_content" in entry:
+        return entry.media_content[0]["url"]
+    if "media_thumbnail" in entry:
+        return entry.media_thumbnail[0]["url"]
+    return None
+
+# ==========================
+def extract_summary(url):
     try:
         headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, headers=headers, timeout=10)
@@ -58,7 +66,7 @@ def extract_article(url):
 
         # BBC
         for p in soup.select("div[data-component='text-block'] p"):
-            txt = clean_text(p.get_text())
+            txt = clean(p.get_text())
             if len(txt) > 50 and txt not in seen:
                 paragraphs.append(txt)
                 seen.add(txt)
@@ -66,45 +74,28 @@ def extract_article(url):
         # الجزيرة
         if not paragraphs:
             for p in soup.select("article p"):
-                txt = clean_text(p.get_text())
+                txt = clean(p.get_text())
                 if len(txt) > 50 and txt not in seen:
                     paragraphs.append(txt)
                     seen.add(txt)
 
-        if not paragraphs:
-            return None
+        # أخذ فقط 5–7 فقرات
+        summary = "\n".join(paragraphs[:6])
 
-        article = "\n\n".join(paragraphs)
+        return summary
 
-        # ✂️ قطع ذكي للنهاية
-        article = article.strip()
-        if "." in article:
-            article = article.rsplit(".", 1)[0] + "."
-
-        return article
-
-    except Exception as e:
-        print("Extraction error:", e)
+    except:
         return None
 
 # ==========================
-def generate_hook(text):
-    words = text.split()
-    if len(words) > 30:
-        return " ".join(words[:20]) + "..."
-    return text[:120] + "..."
-
-# ==========================
 def emoji():
-    return random.choice(["🚨","🔥","⚡","🌍"])
+    return random.choice(["🔥","⚡","🌍","📰"])
 
 # ==========================
-def format_news(title, hook, body):
+def format_news(title, summary):
     return f"""*{emoji()} {title}*
 
-🧠 {hook}
-
-> {body.replace("\n", "\n> ")}
+{summary}
 """
 
 # ==========================
@@ -121,20 +112,19 @@ def post_news():
                 continue
 
             try:
-                article = extract_article(entry.link)
-                if not article:
+                summary = extract_summary(entry.link)
+                if not summary:
                     continue
 
-                hook = generate_hook(article)
-                message = format_news(entry.title, hook, article)
+                img = get_image(entry)
+                message = format_news(entry.title, summary)
 
-                # تقسيم آمن
-                chunks = [message[i:i+4000] for i in range(0, len(message), 4000)]
+                if img:
+                    bot.send_photo(CHANNEL, img, caption=message[:1000])
+                else:
+                    bot.send_message(CHANNEL, message[:4000])
 
-                for c in chunks:
-                    bot.send_message(CHANNEL, c)
-
-                print("✅ CLEAN NEWS POSTED")
+                print("✅ SHORT NEWS POSTED")
 
                 posted.append(key)
                 if len(posted) > 300:
@@ -147,7 +137,7 @@ def post_news():
                 print("Error:", e)
 
 # ==========================
-print("🚀 CLEAN BOT RUNNING...")
+print("🚀 SHORT NEWS BOT RUNNING...")
 
 while True:
     post_news()

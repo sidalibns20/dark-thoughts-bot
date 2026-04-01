@@ -11,8 +11,15 @@ import random
 TOKEN = os.environ.get("BOT_TOKEN")
 CHANNEL = os.environ.get("CHANNEL_ID")
 
-bot = telebot.TeleBot(TOKEN)
+# دعم @username أو ID
+try:
+    CHANNEL = int(CHANNEL)
+except:
+    pass
 
+bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+
+# ==========================
 RSS_FEEDS = [
     "https://www.aljazeera.net/aljazeera/ar/feeds/all.xml",
     "https://feeds.bbci.co.uk/arabic/rss.xml"
@@ -77,10 +84,8 @@ def get_full_article(url):
         return None
 
 # ==========================
-# Hook صحفي احترافي
 def generate_hook(text):
     words = text.split()
-
     if len(words) > 40:
         return " ".join(words[:25]) + "..."
     return text[:150] + "..."
@@ -88,16 +93,13 @@ def generate_hook(text):
 # ==========================
 def format_news(title, hook, body):
     return f"""
-{breaking_tag()} {title}
+<b>{breaking_tag()} {title}</b>
 
 🧠 {hook}
 
-📌 التفاصيل:
-
+<blockquote expandable>
 {body}
-
-—
-📰 تغطية إخبارية مستمرة
+</blockquote>
 """
 
 # ==========================
@@ -123,15 +125,19 @@ def post_news():
 
                 message = format_news(entry.title, hook, article)
 
-                # نشر مع صورة
+                # إرسال مع صورة
                 if img:
-                    bot.send_photo(CHANNEL, img, caption=message[:1000])
+                    bot.send_photo(
+                        CHANNEL,
+                        img,
+                        caption=message[:1000]
+                    )
                 else:
-                    # تقسيم الرسالة الطويلة
+                    # تقسيم الرسائل الطويلة
                     for chunk in [message[i:i+4000] for i in range(0, len(message), 4000)]:
                         bot.send_message(CHANNEL, chunk)
 
-                print("🔥 SUPER NEWS POSTED")
+                print("🔥 NEWS POSTED")
 
                 posted.append(key)
                 if len(posted) > 300:
@@ -144,7 +150,7 @@ def post_news():
                 print("Error:", e)
 
 # ==========================
-print("🚀 Ultra Media Bot Running...")
+print("🚀 CNN STYLE BOT RUNNING...")
 
 while True:
     post_news()
